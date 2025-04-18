@@ -1,4 +1,7 @@
 *
-!*.f90
-!*.F90
+!src/
+!src/*
+!src/*/*
+!src/*/*/*
+!src/*/*/*/*
 !.gitignore

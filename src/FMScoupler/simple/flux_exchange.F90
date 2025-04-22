@@ -59,6 +59,7 @@ integer :: id_drag_moist,  id_drag_heat,  id_drag_mom,              &
            id_t_atm,  id_u_atm,  id_v_atm,  id_wind,                &
            id_t_ref,  id_rh_ref, id_u_ref,  id_v_ref,  id_q_ref,    &
            id_del_h,  id_del_m,  id_del_q, id_albedo,  id_gust,     &
+           id_rh500,  id_rh700,  id_rh850, id_vort850, id_swfq,     &
            id_t_ca,   id_q_surf, id_q_atm, id_z_atm, id_p_atm,      &
            id_land_mask, id_ice_mask, id_rough_scale,               &
            id_albedo_vis_dir, id_albedo_nir_dir,                    &
@@ -147,6 +148,7 @@ contains
 
 real, dimension(is:ie,js:je) :: u_surf, v_surf, rough_heat, rough_moist, &
                                 rough_mom, rough_scale, q_star, cd_q,    &
+                                swfq,                                    &
                                 albedo, albedo_vis_dir, albedo_nir_dir,  &
                                 albedo_vis_dif, albedo_nir_dif,          &
                                 del_m, del_h, del_q, land_frac,          &
@@ -201,6 +203,7 @@ real :: zrefm, zrefh
    cd_t = 0.0
    cd_m = 0.0
    cd_q = 0.0
+   swfq = 0.0
 
    avail   = .true.
 
@@ -247,16 +250,17 @@ real :: zrefm, zrefh
 
    avail = .true.
    call surface_flux_2d (Atm%t_bot, Atm%tr_bot(:,:,isphum), Atm%u_bot, Atm%v_bot,        &
-                      Atm%p_bot, Atm%z_bot,                              &
-                      p_surf, t_surf, t_ca, q_surf, u_surf, v_surf,      &
-                      rough_mom, rough_heat, rough_moist, rough_scale,   &
-                      Atm%gust,                                          &
-                      flux_t, flux_q, flux_lw, flux_u, flux_v,           &
-                      cd_m,   cd_t, cd_q, wind,                          &
-                      u_star, b_star, q_star,                            &
-                      dhdt_surf, dedt_surf, dedq_surf, drdt_surf,        &
-                      dhdt_atm,  dedq_atm,   dtaudu_atm, dtaudv_atm,     &
-                      dt, Land%mask(:,:,1), seawater, avail              )
+                      Atm%p_bot, Atm%z_bot,                                              &
+                      p_surf, t_surf, t_ca, q_surf, u_surf, v_surf,                      &
+                      rough_mom, rough_heat, rough_moist, rough_scale,                   &
+                      Atm%gust,                                                          &
+                      Atm%rh500, Atm%rh700, Atm%rh850, Atm%vort850, swfq,                &
+                      flux_t, flux_q, flux_lw, flux_u, flux_v,                           &
+                      cd_m,   cd_t, cd_q, wind,                                          &
+                      u_star, b_star, q_star,                                            &
+                      dhdt_surf, dedt_surf, dedq_surf, drdt_surf,                        &
+                      dhdt_atm,  dedq_atm,   dtaudu_atm, dtaudv_atm,                     &
+                      dt, Land%mask(:,:,1), seawater, avail                              )
 
  ! GR (2025-04-22) addition of diagnostic immediately after updating
  !                 water vapor flux to ensure proper suppression.
@@ -312,6 +316,11 @@ real :: zrefm, zrefh
    if ( id_p_atm       > 0 ) used = send_data ( id_p_atm,       Atm%p_bot,    Time )
    if ( id_z_atm       > 0 ) used = send_data ( id_z_atm,       Atm%z_bot,    Time )
    if ( id_gust        > 0 ) used = send_data ( id_gust,        Atm%gust,     Time )
+   if ( id_rh500       > 0 ) used = send_data ( id_rh500,       Atm%rh500,    Time )
+   if ( id_rh700       > 0 ) used = send_data ( id_rh700,       Atm%rh700,    Time )
+   if ( id_rh850       > 0 ) used = send_data ( id_rh850,       Atm%rh850,    Time )
+   if ( id_vort850     > 0 ) used = send_data ( id_vort850,     Atm%vort850,  Time )
+   if ( id_swfq        > 0 ) used = send_data ( id_swfq,        swfq,         Time )
    if ( id_u_flux      > 0 ) used = send_data ( id_u_flux,      flux_u,       Time )
    if ( id_v_flux      > 0 ) used = send_data ( id_v_flux,      flux_v,       Time )
    if ( id_albedo      > 0 ) used = send_data ( id_albedo,      albedo,       Time )
@@ -914,7 +923,11 @@ subroutine diag_field_init ( Time, atmos_axes )
 
    id_drag_moist = &
    register_diag_field ( mod_name, 'drag_moist', atmos_axes, Time, &
-                        'drag coeff for moisture',    'none'     )
+                        'drag coeff for moisture',     'none'     )
+   
+   id_swfq       = &
+   register_diag_field ( mod_name, 'swfq', atmos_axes, Time, &
+                        'SWISHE application frequency','none'     )
 
    id_drag_heat  = &
    register_diag_field ( mod_name, 'drag_heat', atmos_axes, Time, &
@@ -985,6 +998,19 @@ subroutine diag_field_init ( Time, atmos_axes )
   id_gust       = &
        register_diag_field ( mod_name, 'gust',     atmos_axes, Time, &
        'gust scale',    'm/s')
+  
+  id_rh500       = &
+       register_diag_field ( mod_name, 'rh500',     atmos_axes, Time, &
+       '500 hPa relative humidity',    '%')
+  id_rh700       = &
+       register_diag_field ( mod_name, 'rh700',     atmos_axes, Time, &
+       '700 hPa relative humidity',    '%')
+  id_rh850       = &
+       register_diag_field ( mod_name, 'rh850',     atmos_axes, Time, &
+       '850 hPa relative humidity',    '%')
+  id_vort850       = &
+       register_diag_field ( mod_name, 'vort850',   atmos_axes, Time, &
+       '850 hPa relative vorticity',    '/s')
 
    id_t_flux     = &
    register_diag_field ( mod_name, 'shflx',      atmos_axes, Time, &
@@ -1162,6 +1188,7 @@ subroutine surface_flux_2d (                                           &
      p_surf,    t_surf,     t_ca,      q_surf,                         &
      u_surf,    v_surf,                                                &
      rough_mom, rough_heat, rough_moist, rough_scale, gust,            &
+     rh500,     rh700,      rh850,     vort850,   swfq,                &
      flux_t,    flux_q,     flux_r,    flux_u,    flux_v,              &
      cd_m,      cd_t,       cd_q,                                      &
      w_atm,     u_star,     b_star,     q_star,                        &
@@ -1176,13 +1203,14 @@ subroutine surface_flux_2d (                                           &
        t_atm,     q_atm_in,   u_atm,     v_atm,              &
        p_atm,     z_atm,      t_ca,                          &
        p_surf,    t_surf,     u_surf,    v_surf,             &
-       rough_mom, rough_heat, rough_moist, rough_scale, gust
+       rough_mom, rough_heat, rough_moist, rough_scale, gust, &
+       rh500,     rh700,      rh850,     vort850
   real, intent(out), dimension(:,:) :: &
        flux_t,    flux_q,     flux_r,    flux_u,  flux_v,    &
        dhdt_surf, dedt_surf,  dedq_surf, drdt_surf,          &
        dhdt_atm,  dedq_atm,   dtaudu_atm,dtaudv_atm,         &
        w_atm,     u_star,     b_star,    q_star,             &
-       cd_m,      cd_t,       cd_q
+       cd_m,      cd_t,       cd_q,      swfq
   real, intent(inout), dimension(:,:) :: q_surf
   real, intent(in) :: dt
 
@@ -1195,6 +1223,7 @@ subroutine surface_flux_2d (                                           &
           p_surf(:,j),    t_surf(:,j),     t_ca(:,j),      q_surf(:,j),                             &
           u_surf(:,j),    v_surf(:,j),                                                              &
           rough_mom(:,j), rough_heat(:,j), rough_moist(:,j), rough_scale(:,j), gust(:,j),           &
+          rh500(:,j),     rh700(:,j),      rh850(:,j),     vort850(:,j),   swfq(:,j),               &
           flux_t(:,j),    flux_q(:,j),     flux_r(:,j),    flux_u(:,j),    flux_v(:,j),             &
           cd_m(:,j),      cd_t(:,j),       cd_q(:,j),                                               &
           w_atm(:,j),     u_star(:,j),     b_star(:,j),     q_star(:,j),                            &

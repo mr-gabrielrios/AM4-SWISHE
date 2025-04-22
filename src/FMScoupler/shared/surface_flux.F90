@@ -180,7 +180,7 @@ logical :: do_simple             = .false.
 ! GR: addition of parameters relevant to SWISHE
 !     credit to Wenchang Yang (wenchang@princeton.edu) for initial implementation
 logical :: suppress_flux_q       = .false.
-logical :: supress_flux_t        = .false.
+logical :: suppress_flux_t        = .false.
 real    :: w_cddt                = 7.5 !WY: critical wind threshold in evap cap
 real    :: wcap_cddt             = 12.0 !WY: critical wind threshold in evap cap, windspeed capped if >w_cddt and <w0_cddt
 real    :: w0_cddt               = 14.5 !WY: critical wind threshold in evap cap, windspeed=0 if >=w0_cddt
@@ -249,7 +249,7 @@ subroutine surface_flux_1d (                                           &
                                      rough_heat, & !< Heat roughness length
                                      rough_moist, & !< Moisture roughness length
                                      rough_scale, & !< Scale factor used to topographic roughness calculation
-                                     gust !< Gustiness factor
+                                     gust, & !< Gustiness factor
                                      rh500, & ! 500 hPa relative humidity
                                      rh700, & ! 700 hPa relative humidity
                                      rh850, & ! 850-hPa relative humidity

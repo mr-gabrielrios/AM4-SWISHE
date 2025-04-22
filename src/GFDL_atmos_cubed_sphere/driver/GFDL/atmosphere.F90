@@ -72,7 +72,7 @@ use fv_control_mod,     only: fv_control_init, fv_end, ngrids
 use fv_eta_mod,         only: get_eta_level
 use fv_dynamics_mod,    only: fv_dynamics
 use fv_nesting_mod,     only: twoway_nesting
-use fv_diagnostics_mod, only: fv_diag_init, fv_diag, fv_time, prt_maxmin, prt_height
+use fv_diagnostics_mod, only: fv_diag_init, fv_diag, fv_diag_gr, fv_time, prt_maxmin, prt_height
 use fv_cmip_diag_mod,   only: fv_cmip_diag_init, fv_cmip_diag, fv_cmip_diag_end
 use fv_restart_mod,     only: fv_restart, fv_write_restart
 use fv_timing_mod,      only: timing_on, timing_off
@@ -1005,12 +1005,19 @@ contains
  end subroutine get_stock_pe
 
 
- subroutine atmosphere_state_update (Time, Physics_tendency, Physics, Atm_block)
+  subroutine atmosphere_state_update (Time, Physics_tendency, Physics, Atm_block, &
+                                     rh500, rh700, rh850, vort850)
+
    type(time_type),intent(in)      :: Time
    type (physics_tendency_type),   intent(in) :: Physics_tendency
    type (physics_type),    intent(in) :: Physics
    type (block_control_type), intent(in) :: Atm_block
+
+   ! GR: extract fields used for flux suppression from fv_diag_GR
+   real, intent(out), dimension(isc:iec,jsc:jec) :: rh500, rh700, rh850, vort850
+
    type(time_type) :: Time_prev, Time_next
+
 !--- local variables ---
    integer :: i, j, k, n, w_diff, nt_dyn
    integer :: nb, ibs, ibe, jbs, jbe
@@ -1106,10 +1113,12 @@ contains
      fv_time = Time_next
      call get_time (fv_time, seconds,  days)
 
-     call fv_diag(Atm(mygrid:mygrid), zvir, fv_time, Atm(mygrid)%flagstruct%print_freq)
-      if (Atm(mygrid)%coarse_graining%write_coarse_diagnostics) then
+     call fv_diag_gr(Atm(mygrid:mygrid), zvir, fv_time, Atm(mygrid)%flagstruct%print_freq, &
+                     rh500, rh700, rh850, vort850)
+
+     if (Atm(mygrid)%coarse_graining%write_coarse_diagnostics) then
          call fv_coarse_diag(Atm(mygrid:mygrid), fv_time)
-      endif
+     endif
      call fv_cmip_diag(Atm(mygrid:mygrid), zvir, fv_time)
 
      call timing_off('FV_DIAG')

@@ -145,6 +145,10 @@ public ice_atm_bnd_type_chksum
      real, pointer, dimension(:,:) :: p_surf   => null() ! surface pressure
      real, pointer, dimension(:,:) :: slp      => null() ! sea level pressure
      real, pointer, dimension(:,:) :: gust     => null() ! gustiness factor
+     real, pointer, dimension(:,:) :: rh500    => null() ! 
+     real, pointer, dimension(:,:) :: rh700    => null() ! 
+     real, pointer, dimension(:,:) :: rh850    => null() ! 
+     real, pointer, dimension(:,:) :: vort850  => null() ! 
      real, pointer, dimension(:,:) :: coszen   => null() ! cosine of the zenith angle
      real, pointer, dimension(:,:) :: flux_sw  => null() ! net shortwave flux (W/m2) at the surface
      real, pointer, dimension(:,:) :: flux_sw_dir            =>null()
@@ -1082,7 +1086,11 @@ subroutine update_atmos_model_state (Atmos)
      enddo
     endif
 
-    call atmosphere_state_update (Atmos%Time, Physics_tendency, Physics, Atm_block)
+    call atmosphere_state_update (Atmos%Time, Physics_tendency, Physics, Atm_block, &
+                                  Atmos % rh500, &
+                                  Atmos % rh700, &
+                                  Atmos % rh850, & 
+                                  Atmos % vort850)
 
 !------ advance time ------
     Atmos % Time = Atmos % Time + Atmos % Time_step
@@ -1334,6 +1342,10 @@ type(atmos_data_type), intent(in) :: atm
   write(outunit,100) ' atm%p_surf                 ', mpp_chksum(atm%p_surf                )
   write(outunit,100) ' atm%slp                    ', mpp_chksum(atm%slp                   )
   write(outunit,100) ' atm%gust                   ', mpp_chksum(atm%gust                  )
+  write(outunit,100) ' atm%rh500                  ', mpp_chksum(atm%rh500                 )
+  write(outunit,100) ' atm%rh700                  ', mpp_chksum(atm%rh700                 )
+  write(outunit,100) ' atm%rh850                  ', mpp_chksum(atm%rh850                 )
+  write(outunit,100) ' atm%vort850                ', mpp_chksum(atm%vort850               )
   write(outunit,100) ' atm%coszen                 ', mpp_chksum(atm%coszen                )
   write(outunit,100) ' atm%flux_sw                ', mpp_chksum(atm%flux_sw               )
   write(outunit,100) ' atm%flux_sw_dir            ', mpp_chksum(atm%flux_sw_dir           )
@@ -1533,6 +1545,10 @@ end subroutine ice_atm_bnd_type_chksum
                Atmos % p_surf   (nlon,nlat), &
                Atmos % slp      (nlon,nlat), &
                Atmos % gust     (nlon,nlat), &
+               Atmos % rh500    (nlon,nlat), &
+               Atmos % rh700    (nlon,nlat), &
+               Atmos % rh850    (nlon,nlat), &
+               Atmos % vort850  (nlon,nlat), &
                Atmos % flux_sw  (nlon,nlat), &
                Atmos % flux_sw_dir (nlon,nlat), &
                Atmos % flux_sw_dif (nlon,nlat), &
@@ -1578,6 +1594,10 @@ end subroutine ice_atm_bnd_type_chksum
                 Atmos%p_surf,                 &
                 Atmos%slp,                    &
                 Atmos%gust,                   &
+                Atmos%rh500,                  &
+                Atmos%rh700,                  &
+                Atmos%rh850,                  &
+                Atmos%vort850,                &
                 Atmos%flux_sw,                &
                 Atmos%flux_sw_dir,            &
                 Atmos%flux_sw_dif,            &

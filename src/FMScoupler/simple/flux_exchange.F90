@@ -258,6 +258,10 @@ real :: zrefm, zrefh
                       dhdt_atm,  dedq_atm,   dtaudu_atm, dtaudv_atm,     &
                       dt, Land%mask(:,:,1), seawater, avail              )
 
+ ! GR (2025-04-22) addition of diagnostic immediately after updating
+ !                 water vapor flux to ensure proper suppression.
+ write(*, *) '[sfc_boundary_layer()] post-surface_flux_2d `flux_q`: ', flux_q
+ 
  ! additional calculation to avoid passing extra
  ! argument out of surface_flux (data duplication)
    drag_q = wind*cd_q
@@ -469,6 +473,11 @@ real, dimension(is:ie,js:je) :: gamma, dtmass, delta_t, delta_q, &
    flux_q     =  flux_q        + dedq_atm * f_q_delt_n
    dedt_surf  =  dedt_surf     + dedq_atm * e_q_n
    dedq_surf  =  dedq_surf     + dedq_atm * e_q_n
+ 
+   ! GR (2025-04-22) addition of diagnostic immediately after updating
+   !                 water vapor flux to ensure proper suppression.
+   write(*, *) '[flux_down_from_atmos()] post-adjustment `flux_q`: ', flux_q
+
 
 !-----------------------------------------------------------------------
 !---- output fields on the land grid -------
@@ -601,6 +610,10 @@ subroutine flux_up_to_atmos (Time, Land, Ice, Boundary )
      flux_q                     = flux_q      + dt_t_surf*dedt_surf
      Boundary%dt_tr(:,:,isphum) = f_q_delt_n  + dt_t_surf*e_q_n
   endwhere
+ 
+  ! GR (2025-04-22) addition of diagnostic immediately after updating
+  !                 water vapor flux to ensure proper suppression.
+  write(*, *) '[flux_up_to_atmos()] post-adjustment `flux_q`: ', flux_q
 
 !print *, 'PE,dt_t(L)(mn,mx)=',mpp_pe(),minval(Boundary%dt_t,mask=Land%mask(:,:,1)),maxval(Boundary%dt_t,mask=Land%mask(:,:,1))
 !print *, 'PE,dt_q(L)(mn,mx)=',mpp_pe(),minval(Boundary%dt_q,mask=Land%mask(:,:,1)),maxval(Boundary%dt_q,mask=Land%mask(:,:,1))

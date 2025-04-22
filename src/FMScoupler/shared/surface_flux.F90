@@ -177,6 +177,18 @@ real :: bulk_zq                           !< Reference height for atm humidity
 logical :: raoult_sat_vap        = .false. !< Reduce saturation vapor pressure to account for seawater
 logical :: do_simple             = .false.
 
+! GR: addition of parameters relevant to SWISHE
+!     credit to Wenchang Yang (wenchang@princeton.edu) for initial implementation
+logical :: suppress_flux_q       = .false.
+logical :: supress_flux_t        = .false.
+real    :: w_cddt                = 7.5 !WY: critical wind threshold in evap cap
+real    :: wcap_cddt             = 12.0 !WY: critical wind threshold in evap cap, windspeed capped if >w_cddt and <w0_cddt
+real    :: w0_cddt               = 14.5 !WY: critical wind threshold in evap cap, windspeed=0 if >=w0_cddt
+real    :: wmin_ddt              = 0.0 !WY: minimum w_atm to be set if>w0_cddt
+real    :: sst_cddt              = 16.85 !WY: critical sst threshold in evap cap; 
+                                         !GR: value set to 290 K to capture wide range of
+                                         !    SSTs under which TCs can form in aquaplanet runs
+real    :: dsst_ddt              = 1.0 !WY: sst taper width in evap cap
 
 namelist /surface_flux_nml/ no_neg_q,                   &
                             use_virtual_temp,           &
@@ -192,9 +204,15 @@ namelist /surface_flux_nml/ no_neg_q,                   &
                             bulk_zt,                    &
                             bulk_zq,                    &
                             raoult_sat_vap,             &
-                            do_simple
-
-
+                            do_simple,                  &
+                            suppress_flux_q,            &
+                            suppress_flux_t,            &
+                            w_cddt,                     &
+                            wcap_cddt,                  &
+                            w0_cddt,                    &
+                            wmin_ddt,                   &
+                            sst_cddt,                   &
+                            dsst_ddt
 
 contains
 
@@ -205,6 +223,7 @@ subroutine surface_flux_1d (                                           &
      p_surf,    t_surf,     t_ca,      q_surf,                         &
      u_surf,    v_surf,                                                &
      rough_mom, rough_heat, rough_moist, rough_scale, gust,            &
+     rh500,     rh700,      rh850,     vort850,   swfq,                &
      flux_t, flux_q, flux_r, flux_u, flux_v,                           &
      cd_m,      cd_t,       cd_q,                                      &
      w_atm,     u_star,     b_star,     q_star,                        &
@@ -231,6 +250,10 @@ subroutine surface_flux_1d (                                           &
                                      rough_moist, & !< Moisture roughness length
                                      rough_scale, & !< Scale factor used to topographic roughness calculation
                                      gust !< Gustiness factor
+                                     rh500, & ! 500 hPa relative humidity
+                                     rh700, & ! 700 hPa relative humidity
+                                     rh850, & ! 850-hPa relative humidity
+                                     vort850 ! 850-hPa relative vorticity
   real, intent(out), dimension(:) :: flux_t, & !< Sensible heat flux
                                      flux_q, & !< Evaporative water flux
                                      flux_r, & !< Radiative energy flux
@@ -250,7 +273,8 @@ subroutine surface_flux_1d (                                           &
                                      q_star, & !< Turbulent moisture scale
                                      cd_m, & !< Momentum exchange coefficient
                                      cd_t, & ! Heat exchange coefficient
-                                     cd_q !< Moisture exchange coefficient
+                                     cd_q, & !< Moisture exchange coefficient,
+                                     swfq ! SWISHE application frequency
   real, intent(inout), dimension(:) :: q_surf !< Mixing ratio at the Earth's surface (kg/kg)
   real, intent(in) :: dt !< Time step (it is not used presently)
 
@@ -266,6 +290,13 @@ subroutine surface_flux_1d (                                           &
        rho_drag, drag_t,   drag_m,    drag_q,    rho,      &
        q_atm,    q_surf0,  dw_atmdu,  dw_atmdv,  w_gust,   &
        zu,       zt,       zq
+
+  ! GR: addition of local variables relevant to flux suppression
+  real, dimension(size(vort850(:))) :: rh500_weighted, rh700_weighted, &
+                                       rh850_weighted, vort850_weighted, &
+                                       es_thresh
+  real, dimension(size(t_atm(:))) :: alpha !!WY: weight used in kill_tc taper
+  real, dimension(size(t_atm(:))) :: w_atm_q !!WY: modified w_atm used in drag_q
 
   integer :: i, nbad
 
@@ -384,13 +415,79 @@ subroutine surface_flux_1d (                                           &
     ! to be consistent with the transfer coef. when computing fluxes
   end if
 
+  ! --------------------------------------------------------------------------
+  ! Begin definition of SWISHE threshold, `es_thresh`
+
+  ! Define an evaporation suppression index to prevent a binary approach from
+  ! not being applied to relevant TC-like vortices
+
+  rh500_weighted      = merge(0.5, 0.0, (rh500 .ge. 50))
+  rh700_weighted      = merge(1.0, 0.0, (rh700 .ge. 70))
+  rh850_weighted      = merge(1.0, 0.0, (rh850 .ge. 75))
+  vort850_weighted    = merge(0.5, 0.0, (abs(vort850) .ge. 1e-4))
+  do i = 1, size(rh500_weighted)
+      es_thresh(i)    = rh500_weighted(i) + rh700_weighted(i) &
+                        + rh850_weighted(i) + vort850_weighted(i)
+  enddo
+
+  swfq = merge(1.0, 0.0,   (seawater) .and. (avail) .and. (w_atm > w0_cddt) &
+                           .and. (t_surf0 - 273.15 - sst_cddt > 0) .and. (es_thresh .ge. 2.5))
+
+  ! End definition of SWISHE threshold, `es_thresh`
+  ! --------------------------------------------------------------------------
+
   where (avail)
      ! scale momentum drag coefficient on orographic roughness
      cd_m = cd_m*(log(z_atm/rough_mom+1)/log(z_atm/rough_scale+1))**2
+ 
      ! surface layer drag coefficients
      drag_t = cd_t * w_atm
-     drag_q = cd_q * w_atm
      drag_m = cd_m * w_atm
+     
+     ! Begin SWISHE flux suppression conditional
+     where (seawater)
+     
+         ! Apply suppression where the threshold is exceeded
+         where (es_thresh .ge. 2.5)
+             
+             !WY: first get the w_atm_q
+             where(w_atm>w0_cddt)
+                 w_atm_q = wmin_ddt !WY: set to wmin_ddt if very strong wind speed (>w0_cddt)
+             elsewhere(w_atm>wcap_cddt)
+                 !WY: linearly decreases to 0 if w_atm between wcap_cddt and w0_cddt
+                 w_atm_q = w_cddt - (w_atm - wcap_cddt)*(w_cddt - wmin_ddt)/(w0_cddt - wcap_cddt)
+             elsewhere(w_atm>w_cddt)
+                 w_atm_q = w_cddt !WY: constant if w_atm between w_cddt and wcap_cddt
+             elsewhere
+                 w_atm_q = w_atm !WY: w_atm if w_atm<w_cddt
+             endwhere
+
+             !WY: second, apply to warm SSTs
+             where(t_surf0 - 273.15 - sst_cddt>0)
+                 !WY: warm sst grids cap the evap wind speed
+                 !drag_q = cd_q * min(w_cddt, w_atm)
+                 !WY: apply w_atm_q to warm SSTs
+                 drag_q = cd_q * w_atm_q
+             elsewhere(t_surf0 - 273.15 - sst_cddt + dsst_ddt<0)
+                 drag_q = cd_q * w_atm !WY: cold sst grids use the default w_atm
+             elsewhere
+                 !WY: taper sst: weighted average
+                 !WY: sst_cddt-dsst_ddt<=t_surf0-273.15<=sst_cddt
+                 !WY: alpha -> 1 when t_surf0-273.15 -> sst_cddt, warmer
+                 !WY: alpha -> 0 when t_surf0-273.15 -> sst_cddt-dsst_ddt, cooler
+                 alpha = (t_surf0 - 273.15 - sst_cddt + dsst_ddt)/dsst_ddt
+                 !drag_q = cd_q * (alpha*min(w_cddt, w_atm) + (1-alpha)*w_atm )
+                 drag_q = cd_q * (alpha*w_atm_q + (1-alpha)*w_atm )
+             endwhere
+         
+         elsewhere
+             drag_q = cd_q * w_atm !WY: model's default over non-seawater grids
+         endwhere
+
+     elsewhere
+         drag_q = cd_q * w_atm !WY: model's default over non-seawater grids
+     endwhere
+     ! End SWISHE flux suppression conditional
 
      ! density
      rho = p_atm / (rdgas * tv_atm)
@@ -472,6 +569,7 @@ subroutine surface_flux_0d (                                                 &
      p_surf_0,    t_surf_0,     t_ca_0,      q_surf_0,                       &
      u_surf_0,    v_surf_0,                                                  &
      rough_mom_0, rough_heat_0, rough_moist_0, rough_scale_0, gust_0,        &
+     rh500_0,     rh700_0,      rh850_0,     vort850_0, swfq_0,              &
      flux_t_0,    flux_q_0,     flux_r_0,    flux_u_0,  flux_v_0,            &
      cd_m_0,      cd_t_0,       cd_q_0,                                      &
      w_atm_0,     u_star_0,     b_star_0,     q_star_0,                      &
@@ -498,7 +596,11 @@ subroutine surface_flux_0d (                                                 &
                       rough_heat_0, & !< Heat roughness length
                       rough_moist_0, & !< Moisture roughness length
                       rough_scale_0, & !< Scale factor used to topographic roughness calculation
-                      gust_0 !< Gustiness factor
+                      gust_0, & !< Gustiness factor
+                      rh500_0, &
+                      rh700_0, &
+                      rh850_0, &
+                      vort850_0
   real, intent(out) :: flux_t_0, & !< Sensible heat flux
                        flux_q_0, & !< Evaporative water flux
                        flux_r_0, & !< Radiative energy flux
@@ -518,7 +620,8 @@ subroutine surface_flux_0d (                                                 &
                        q_star_0, & !< Turbulent moisture scale
                        cd_m_0, & !< Momentum exchange coefficient
                        cd_t_0, & ! Heat exchange coefficient
-                       cd_q_0 !< Moisture exchange coefficient
+                       cd_q_0, & !< Moisture exchange coefficient,
+                       swfq_0
   real, intent(inout) :: q_surf_0 !< Mixing ratio at the Earth's surface (kg/kg)
   real, intent(in) :: dt !< Time step (it is not used presently)
 
@@ -528,13 +631,14 @@ subroutine surface_flux_0d (                                                 &
        t_atm,     q_atm,      u_atm,     v_atm,              &
        p_atm,     z_atm,      t_ca,                          &
        p_surf,    t_surf,     u_surf,    v_surf,             &
-       rough_mom, rough_heat, rough_moist,  rough_scale, gust
+       rough_mom, rough_heat, rough_moist,  rough_scale, gust, &
+       rh500,     rh700,      rh850,     vort850
   real, dimension(1) :: &
        flux_t,    flux_q,     flux_r,    flux_u,  flux_v,    &
        dhdt_surf, dedt_surf,  dedq_surf, drdt_surf,          &
        dhdt_atm,  dedq_atm,   dtaudu_atm,dtaudv_atm,         &
        w_atm,     u_star,     b_star,    q_star,             &
-       cd_m,      cd_t,       cd_q
+       cd_m,      cd_t,       cd_q,      swfq
   real, dimension(1) :: q_surf
 
 
@@ -556,6 +660,10 @@ subroutine surface_flux_0d (                                                 &
   rough_moist(1) = rough_moist_0
   rough_scale(1) = rough_scale_0
   gust(1)        = gust_0
+  rh500(1)       = rh500_0
+  rh700(1)       = rh700_0
+  rh850(1)       = rh850_0
+  vort850(1)     = vort850_0
   q_surf(1)      = q_surf_0
   land(1)        = land_0
   seawater(1)    = seawater_0
@@ -566,6 +674,7 @@ subroutine surface_flux_0d (                                                 &
        p_surf,    t_surf,     t_ca,      q_surf,                         &
        u_surf,    v_surf,                                                &
        rough_mom, rough_heat, rough_moist, rough_scale, gust,            &
+       rh500,     rh700,      rh850,     vort850,   swfq,                &
        flux_t, flux_q, flux_r, flux_u, flux_v,                           &
        cd_m,      cd_t,       cd_q,                                      &
        w_atm,     u_star,     b_star,     q_star,                        &
@@ -594,6 +703,7 @@ subroutine surface_flux_0d (                                                 &
   cd_m_0       = cd_m(1)
   cd_t_0       = cd_t(1)
   cd_q_0       = cd_q(1)
+  swfq_0       = swfq(1)
 
 end subroutine surface_flux_0d
 
@@ -602,6 +712,7 @@ subroutine surface_flux_2d (                                           &
      p_surf,    t_surf,     t_ca,      q_surf,                         &
      u_surf,    v_surf,                                                &
      rough_mom, rough_heat, rough_moist, rough_scale, gust,            &
+     rh500,     rh700,      rh850,     vort850,   swfq,                &
      flux_t,    flux_q,     flux_r,    flux_u,    flux_v,              &
      cd_m,      cd_t,       cd_q,                                      &
      w_atm,     u_star,     b_star,     q_star,                        &
@@ -628,7 +739,11 @@ subroutine surface_flux_2d (                                           &
                                        rough_heat, & !< Heat roughness length
                                        rough_moist, & !< Moisture roughness length
                                        rough_scale, & !< Scale factor used to topographic roughness calculation
-                                       gust !< Gustiness factor
+                                       gust, & !< Gustiness factor
+                                       rh500, & ! 500 hPa relative humidity
+                                       rh700, & ! 700 hPa relative humidity
+                                       rh850, & ! 850-hPa relative humidity
+                                       vort850 ! 850-hPa relative vorticity
   real, intent(out), dimension(:,:) :: flux_t, & !< Sensible heat flux
                                        flux_q, & !< Evaporative water flux
                                        flux_r, & !< Radiative energy flux
@@ -648,7 +763,8 @@ subroutine surface_flux_2d (                                           &
                                        q_star, & !< Turbulent moisture scale
                                        cd_m, & !< Momentum exchange coefficient
                                        cd_t, & ! Heat exchange coefficient
-                                       cd_q !< Moisture exchange coefficient
+                                       cd_q, & !< Moisture exchange coefficient,
+                                       swfq ! SWISHE application frequency
   real, intent(inout), dimension(:,:) :: q_surf !< Mixing ratio at the Earth's surface (kg/kg)
   real, intent(in) :: dt !< Time step (it is not used presently)
 
@@ -661,6 +777,7 @@ subroutine surface_flux_2d (                                           &
           p_surf(:,j),    t_surf(:,j),     t_ca(:,j),      q_surf(:,j),                                   &
           u_surf(:,j),    v_surf(:,j),                                                                    &
           rough_mom(:,j), rough_heat(:,j), rough_moist(:,j), rough_scale(:,j), gust(:,j),                 &
+          rh500(:,j),     rh700(:,j),      rh850(:,j),     vort850(:,j),   swfq(:,j),                     &
           flux_t(:,j),    flux_q(:,j),     flux_r(:,j),    flux_u(:,j),    flux_v(:,j),                   &
           cd_m(:,j),      cd_t(:,j),       cd_q(:,j),                                                     &
           w_atm(:,j),     u_star(:,j),     b_star(:,j),     q_star(:,j),                                  &

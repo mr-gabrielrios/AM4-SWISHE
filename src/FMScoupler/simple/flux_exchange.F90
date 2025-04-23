@@ -109,7 +109,7 @@ integer :: is, ie, js, je
 
 !---- allocatable module storage ------
 
-  real, allocatable, dimension(:,:) :: t_surf, t_ca, q_surf, p_surf
+  real, allocatable, dimension(:,:) :: t_surf, t_ca, q_surf, p_surf, swfq
 
   real, allocatable, dimension(:,:) :: e_t_n, f_t_delt_n, &
                                        e_q_n, f_q_delt_n
@@ -136,7 +136,7 @@ contains
 
 !#######################################################################
 
- subroutine sfc_boundary_layer ( dt, Time, Atm, Land, Ice, Boundary )
+ subroutine sfc_boundary_layer ( dt, Time, Atm, Land, Ice, Boundary)
 
  real,                   intent(in)  :: dt  !< Time step
  type       (time_type), intent(in)  :: Time !< Current time
@@ -148,11 +148,11 @@ contains
 
 real, dimension(is:ie,js:je) :: u_surf, v_surf, rough_heat, rough_moist, &
                                 rough_mom, rough_scale, q_star, cd_q,    &
-                                swfq,                                    &
                                 albedo, albedo_vis_dir, albedo_nir_dir,  &
                                 albedo_vis_dif, albedo_nir_dif,          &
                                 del_m, del_h, del_q, land_frac,          &
-                                ref, ref2, t_ref, qs_ref, qs_ref_cmip
+                                ref, ref2, t_ref, qs_ref, qs_ref_cmip,   &
+                                rh500, rh700, rh850, vort850
 
 logical, dimension(is:ie,js:je) :: mask, seawater, avail
 real :: zrefm, zrefh
@@ -187,7 +187,8 @@ real :: zrefm, zrefh
               t_surf     (is:ie, js:je), &
               t_ca       (is:ie, js:je), &
               p_surf     (is:ie, js:je), &
-              q_surf     (is:ie, js:je)  )
+              q_surf     (is:ie, js:je), &
+              swfq       (is:ie, js:je) )
 
    allocate ( cd_t       (is:ie, js:je), &
               cd_m       (is:ie, js:je), &
@@ -203,13 +204,22 @@ real :: zrefm, zrefh
    cd_t = 0.0
    cd_m = 0.0
    cd_q = 0.0
-   swfq = 0.0
+   
+   rh500   = 0.
+   rh700   = 0.
+   rh850   = 0.
+   vort850 = 0.
 
    avail   = .true.
 
 !---- atmosphere quantities ----
 
-   p_surf = Atm%p_surf
+   p_surf  = Atm%p_surf
+   rh500   = Atm%rh500  
+   rh700   = Atm%rh700  
+   rh850   = Atm%rh850  
+   vort850 = Atm%vort850
+   swfq    = Atm%swfq
 
 !---- ice quantities ----
 
@@ -254,7 +264,7 @@ real :: zrefm, zrefh
                       p_surf, t_surf, t_ca, q_surf, u_surf, v_surf,                      &
                       rough_mom, rough_heat, rough_moist, rough_scale,                   &
                       Atm%gust,                                                          &
-                      Atm%rh500, Atm%rh700, Atm%rh850, Atm%vort850, swfq,                &
+                      rh500,  rh700,  rh850,   vort850, swfq,                            &
                       flux_t, flux_q, flux_lw, flux_u, flux_v,                           &
                       cd_m,   cd_t, cd_q, wind,                                          &
                       u_star, b_star, q_star,                                            &
@@ -264,7 +274,7 @@ real :: zrefm, zrefh
 
  ! GR (2025-04-22) addition of diagnostic immediately after updating
  !                 water vapor flux to ensure proper suppression.
- write(*, *) '[sfc_boundary_layer()] post-surface_flux_2d `flux_q`: ', flux_q
+ ! write(*, *) '[sfc_boundary_layer()] post-surface_flux_2d `flux_q`: ', flux_q
  
  ! additional calculation to avoid passing extra
  ! argument out of surface_flux (data duplication)
@@ -277,7 +287,6 @@ real :: zrefm, zrefh
    Boundary%albedo_vis_dir = albedo_vis_dir
    Boundary%albedo_nir_dir = albedo_nir_dir
    Boundary%albedo_vis_dif = albedo_vis_dif
-   Boundary%albedo_nir_dif = albedo_nir_dif
    Boundary%rough_mom   = rough_mom
    Boundary%land_frac = land_frac
    Boundary%u_flux    = flux_u
@@ -421,7 +430,6 @@ real :: zrefm, zrefh
    if ( id_tas > 0 ) used = send_data ( id_tas, t_ref, Time )
    if ( id_psl > 0 ) used = send_data ( id_psl, Atm%slp , Time )
 
-
 !=======================================================================
 
  end subroutine sfc_boundary_layer
@@ -485,7 +493,7 @@ real, dimension(is:ie,js:je) :: gamma, dtmass, delta_t, delta_q, &
  
    ! GR (2025-04-22) addition of diagnostic immediately after updating
    !                 water vapor flux to ensure proper suppression.
-   write(*, *) '[flux_down_from_atmos()] post-adjustment `flux_q`: ', flux_q
+   ! write(*, *) '[flux_down_from_atmos()] post-adjustment `flux_q`: ', flux_q
 
 
 !-----------------------------------------------------------------------
@@ -620,10 +628,6 @@ subroutine flux_up_to_atmos (Time, Land, Ice, Boundary )
      Boundary%dt_tr(:,:,isphum) = f_q_delt_n  + dt_t_surf*e_q_n
   endwhere
  
-  ! GR (2025-04-22) addition of diagnostic immediately after updating
-  !                 water vapor flux to ensure proper suppression.
-  write(*, *) '[flux_up_to_atmos()] post-adjustment `flux_q`: ', flux_q
-
 !print *, 'PE,dt_t(L)(mn,mx)=',mpp_pe(),minval(Boundary%dt_t,mask=Land%mask(:,:,1)),maxval(Boundary%dt_t,mask=Land%mask(:,:,1))
 !print *, 'PE,dt_q(L)(mn,mx)=',mpp_pe(),minval(Boundary%dt_q,mask=Land%mask(:,:,1)),maxval(Boundary%dt_q,mask=Land%mask(:,:,1))
 !print *, 'PE,dt_t(I)(mn,mx)=',mpp_pe(),minval(Boundary%dt_t,mask=Ice%mask),maxval(Boundary%dt_t,mask=Ice%mask)
@@ -653,7 +657,7 @@ subroutine flux_up_to_atmos (Time, Land, Ice, Boundary )
    deallocate (dhdt_surf, dedt_surf, dedq_surf, &
                drdt_surf, dhdt_atm,  dedq_atm,  &
                flux_t, flux_q, flux_lw, drag_q)
-   deallocate (t_surf, p_surf, t_ca, q_surf )
+   deallocate (t_surf, p_surf, t_ca, q_surf, swfq)
    deallocate (cd_t, cd_m, b_star, u_star, wind)
 
 !-----------------------------------------------------------------------

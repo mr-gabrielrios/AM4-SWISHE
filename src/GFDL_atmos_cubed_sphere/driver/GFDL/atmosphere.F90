@@ -1006,7 +1006,7 @@ contains
 
 
   subroutine atmosphere_state_update (Time, Physics_tendency, Physics, Atm_block, &
-                                     rh500, rh700, rh850, vort850)
+                                     rh500, rh700, rh850, vort850, swfq)
 
    type(time_type),intent(in)      :: Time
    type (physics_tendency_type),   intent(in) :: Physics_tendency
@@ -1014,7 +1014,7 @@ contains
    type (block_control_type), intent(in) :: Atm_block
 
    ! GR: extract fields used for flux suppression from fv_diag_GR
-   real, intent(out), dimension(isc:iec,jsc:jec) :: rh500, rh700, rh850, vort850
+   real, intent(out), dimension(isc:iec,jsc:jec) :: rh500, rh700, rh850, vort850, swfq
 
    type(time_type) :: Time_prev, Time_next
 
@@ -1114,7 +1114,7 @@ contains
      call get_time (fv_time, seconds,  days)
 
      call fv_diag_gr(Atm(mygrid:mygrid), zvir, fv_time, Atm(mygrid)%flagstruct%print_freq, &
-                     rh500, rh700, rh850, vort850)
+                     rh500, rh700, rh850, vort850, swfq)
 
      if (Atm(mygrid)%coarse_graining%write_coarse_diagnostics) then
          call fv_coarse_diag(Atm(mygrid:mygrid), fv_time)

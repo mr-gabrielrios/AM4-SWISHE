@@ -273,9 +273,9 @@ subroutine surface_flux_1d (                                           &
                                      q_star, & !< Turbulent moisture scale
                                      cd_m, & !< Momentum exchange coefficient
                                      cd_t, & ! Heat exchange coefficient
-                                     cd_q, & !< Moisture exchange coefficient,
-                                     swfq ! SWISHE application frequency
-  real, intent(inout), dimension(:) :: q_surf !< Mixing ratio at the Earth's surface (kg/kg)
+                                     cd_q !< Moisture exchange coefficient,
+  real, intent(inout), dimension(:) :: q_surf, & !< Mixing ratio at the Earth's surface (kg/kg)
+                                       swfq ! SWISHE application frequency
   real, intent(in) :: dt !< Time step (it is not used presently)
 
   ! ---- local constants -----------------------------------------------------
@@ -297,9 +297,10 @@ subroutine surface_flux_1d (                                           &
                                        es_thresh
   real, dimension(size(t_atm(:))) :: alpha !!WY: weight used in kill_tc taper
   real, dimension(size(t_atm(:))) :: w_atm_q !!WY: modified w_atm used in drag_q
-
   integer :: i, nbad
 
+  alpha = 0.0
+  w_atm_q = 0
 
   if (.not. module_is_initialized) &
      call mpp_error(FATAL, "surface_flux_1d: surface_flux_init is not called")
@@ -421,17 +422,15 @@ subroutine surface_flux_1d (                                           &
   ! Define an evaporation suppression index to prevent a binary approach from
   ! not being applied to relevant TC-like vortices
 
-  rh500_weighted      = merge(0.5, 0.0, (rh500 .ge. 50))
+  rh500_weighted      = merge(0.5, 0.0, (rh500 .ge. 60))
   rh700_weighted      = merge(1.0, 0.0, (rh700 .ge. 70))
   rh850_weighted      = merge(1.0, 0.0, (rh850 .ge. 75))
   vort850_weighted    = merge(0.5, 0.0, (abs(vort850) .ge. 1e-4))
   do i = 1, size(rh500_weighted)
-      es_thresh(i)    = rh500_weighted(i) + rh700_weighted(i) &
-                        + rh850_weighted(i) + vort850_weighted(i)
+      es_thresh(i)    = rh500_weighted(i) + rh700_weighted(i) + rh850_weighted(i) + vort850_weighted(i)
   enddo
 
-  swfq = merge(1.0, 0.0,   (seawater) .and. (avail) .and. (w_atm > w0_cddt) &
-                           .and. (t_surf0 - 273.15 - sst_cddt > 0) .and. (es_thresh .ge. 2.5))
+  swfq = 0.
 
   ! End definition of SWISHE threshold, `es_thresh`
   ! --------------------------------------------------------------------------
@@ -444,49 +443,35 @@ subroutine surface_flux_1d (                                           &
      drag_t = cd_t * w_atm
      drag_m = cd_m * w_atm
      
-     ! Begin SWISHE flux suppression conditional
-     where (seawater)
-     
-         ! Apply suppression where the threshold is exceeded
-         where (es_thresh .ge. 2.5)
-             
-             !WY: first get the w_atm_q
-             where(w_atm>w0_cddt)
-                 w_atm_q = wmin_ddt !WY: set to wmin_ddt if very strong wind speed (>w0_cddt)
-             elsewhere(w_atm>wcap_cddt)
-                 !WY: linearly decreases to 0 if w_atm between wcap_cddt and w0_cddt
-                 w_atm_q = w_cddt - (w_atm - wcap_cddt)*(w_cddt - wmin_ddt)/(w0_cddt - wcap_cddt)
-             elsewhere(w_atm>w_cddt)
-                 w_atm_q = w_cddt !WY: constant if w_atm between w_cddt and wcap_cddt
-             elsewhere
-                 w_atm_q = w_atm !WY: w_atm if w_atm<w_cddt
-             endwhere
-
-             !WY: second, apply to warm SSTs
-             where(t_surf0 - 273.15 - sst_cddt>0)
-                 !WY: warm sst grids cap the evap wind speed
-                 !drag_q = cd_q * min(w_cddt, w_atm)
-                 !WY: apply w_atm_q to warm SSTs
-                 drag_q = cd_q * w_atm_q
-             elsewhere(t_surf0 - 273.15 - sst_cddt + dsst_ddt<0)
-                 drag_q = cd_q * w_atm !WY: cold sst grids use the default w_atm
-             elsewhere
-                 !WY: taper sst: weighted average
-                 !WY: sst_cddt-dsst_ddt<=t_surf0-273.15<=sst_cddt
-                 !WY: alpha -> 1 when t_surf0-273.15 -> sst_cddt, warmer
-                 !WY: alpha -> 0 when t_surf0-273.15 -> sst_cddt-dsst_ddt, cooler
-                 alpha = (t_surf0 - 273.15 - sst_cddt + dsst_ddt)/dsst_ddt
-                 !drag_q = cd_q * (alpha*min(w_cddt, w_atm) + (1-alpha)*w_atm )
-                 drag_q = cd_q * (alpha*w_atm_q + (1-alpha)*w_atm )
-             endwhere
-         
+     ! Apply suppression where the threshold is exceeded
+     where (es_thresh .ge. 2.5)
+         !WY: first get the w_atm_q
+         where(w_atm>w0_cddt)
+             w_atm_q = wmin_ddt !WY: set to wmin_ddt if very strong wind speed (>w0_cddt)
+         elsewhere(w_atm>wcap_cddt)
+             !WY: linearly decreases to 0 if w_atm between wcap_cddt and w0_cddt
+             w_atm_q = w_cddt - (w_atm - wcap_cddt)*(w_cddt - wmin_ddt)/(w0_cddt - wcap_cddt)
+         elsewhere(w_atm>w_cddt)
+             w_atm_q = w_cddt !WY: constant if w_atm between w_cddt and wcap_cddt
          elsewhere
-             drag_q = cd_q * w_atm !WY: model's default over non-seawater grids
+             w_atm_q = w_atm !WY: w_atm if w_atm<w_cddt
          endwhere
 
+         !WY: second, apply to warm SSTs
+         where((t_surf0 - 273.15 - sst_cddt) .ge. 0)
+             !WY: warm sst grids cap the evap wind speed
+             !drag_q = cd_q * min(w_cddt, w_atm)
+             !WY: apply w_atm_q to warm SSTs
+             drag_q = cd_q * w_atm_q
+             swfq = 1.             
+         elsewhere(t_surf0 - 273.15 - sst_cddt < 0)
+             drag_q = cd_q * w_atm !WY: cold sst grids use the default w_atm
+         endwhere
+     
      elsewhere
          drag_q = cd_q * w_atm !WY: model's default over non-seawater grids
      endwhere
+
      ! End SWISHE flux suppression conditional
 
      ! density
@@ -620,9 +605,10 @@ subroutine surface_flux_0d (                                                 &
                        q_star_0, & !< Turbulent moisture scale
                        cd_m_0, & !< Momentum exchange coefficient
                        cd_t_0, & ! Heat exchange coefficient
-                       cd_q_0, & !< Moisture exchange coefficient,
-                       swfq_0
-  real, intent(inout) :: q_surf_0 !< Mixing ratio at the Earth's surface (kg/kg)
+                       cd_q_0 !< Moisture exchange coefficient,
+  real, intent(inout) :: q_surf_0, & !< Mixing ratio at the Earth's surface (kg/kg)
+                         swfq_0
+  
   real, intent(in) :: dt !< Time step (it is not used presently)
 
   ! ---- local vars ----------------------------------------------------------
@@ -763,9 +749,9 @@ subroutine surface_flux_2d (                                           &
                                        q_star, & !< Turbulent moisture scale
                                        cd_m, & !< Momentum exchange coefficient
                                        cd_t, & ! Heat exchange coefficient
-                                       cd_q, & !< Moisture exchange coefficient,
-                                       swfq ! SWISHE application frequency
-  real, intent(inout), dimension(:,:) :: q_surf !< Mixing ratio at the Earth's surface (kg/kg)
+                                       cd_q !< Moisture exchange coefficient,
+  real, intent(inout), dimension(:,:) :: q_surf, & !< Mixing ratio at the Earth's surface (kg/kg)
+                                         swfq ! SWISHE application frequency
   real, intent(in) :: dt !< Time step (it is not used presently)
 
   ! ---- local vars -----------------------------------------------------------

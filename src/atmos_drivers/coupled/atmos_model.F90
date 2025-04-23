@@ -149,6 +149,7 @@ public ice_atm_bnd_type_chksum
      real, pointer, dimension(:,:) :: rh700    => null() ! 
      real, pointer, dimension(:,:) :: rh850    => null() ! 
      real, pointer, dimension(:,:) :: vort850  => null() ! 
+     real, pointer, dimension(:,:) :: swfq     => null() ! 
      real, pointer, dimension(:,:) :: coszen   => null() ! cosine of the zenith angle
      real, pointer, dimension(:,:) :: flux_sw  => null() ! net shortwave flux (W/m2) at the surface
      real, pointer, dimension(:,:) :: flux_sw_dir            =>null()
@@ -1090,7 +1091,8 @@ subroutine update_atmos_model_state (Atmos)
                                   Atmos % rh500, &
                                   Atmos % rh700, &
                                   Atmos % rh850, & 
-                                  Atmos % vort850)
+                                  Atmos % vort850, &
+                                  Atmos % swfq)
 
 !------ advance time ------
     Atmos % Time = Atmos % Time + Atmos % Time_step
@@ -1346,6 +1348,7 @@ type(atmos_data_type), intent(in) :: atm
   write(outunit,100) ' atm%rh700                  ', mpp_chksum(atm%rh700                 )
   write(outunit,100) ' atm%rh850                  ', mpp_chksum(atm%rh850                 )
   write(outunit,100) ' atm%vort850                ', mpp_chksum(atm%vort850               )
+  write(outunit,100) ' atm%swfq                   ', mpp_chksum(atm%swfq                  )
   write(outunit,100) ' atm%coszen                 ', mpp_chksum(atm%coszen                )
   write(outunit,100) ' atm%flux_sw                ', mpp_chksum(atm%flux_sw               )
   write(outunit,100) ' atm%flux_sw_dir            ', mpp_chksum(atm%flux_sw_dir           )
@@ -1549,6 +1552,7 @@ end subroutine ice_atm_bnd_type_chksum
                Atmos % rh700    (nlon,nlat), &
                Atmos % rh850    (nlon,nlat), &
                Atmos % vort850  (nlon,nlat), &
+               Atmos % swfq     (nlon,nlat), &
                Atmos % flux_sw  (nlon,nlat), &
                Atmos % flux_sw_dir (nlon,nlat), &
                Atmos % flux_sw_dif (nlon,nlat), &
@@ -1598,6 +1602,7 @@ end subroutine ice_atm_bnd_type_chksum
                 Atmos%rh700,                  &
                 Atmos%rh850,                  &
                 Atmos%vort850,                &
+                Atmos%swfq,                   &
                 Atmos%flux_sw,                &
                 Atmos%flux_sw_dir,            &
                 Atmos%flux_sw_dif,            &

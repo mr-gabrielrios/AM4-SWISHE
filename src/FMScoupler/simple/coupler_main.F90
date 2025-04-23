@@ -158,8 +158,9 @@ implicit none
        Time_atmos = Time_atmos + Time_step_atmos
 
        call sfc_boundary_layer (real(dt_atmos), Time_atmos, Atm, Land, Ice, &
-                                Land_ice_atmos_boundary                     )
+                                Land_ice_atmos_boundary )
        if (do_chksum) call coupler_chksum('sfc+', na)
+
 
        !--- atmospheric dynamical core
        call update_atmos_model_dynamics( Atm )

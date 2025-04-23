@@ -3776,14 +3776,14 @@ contains
  end subroutine fv_diag
 
 
- subroutine fv_diag_gr(Atm, zvir, Time, print_freq, rh500, rh700, rh850, vort850)
+ subroutine fv_diag_gr(Atm, zvir, Time, print_freq, rh500, rh700, rh850, vort850, swfq)
 
     type(fv_atmos_type), intent(inout) :: Atm(:)
     type(time_type),     intent(in) :: Time
     real,                intent(in):: zvir
     integer,             intent(in):: print_freq
 
-    real,                intent(out) :: rh500(:, :), rh700(:, :), rh850(:, :), vort850(:, :)
+    real,                intent(out) :: rh500(:, :), rh700(:, :), rh850(:, :), vort850(:, :), swfq(:, :)
 
     integer :: isc, iec, jsc, jec, n, ntileMe
     integer :: isd, ied, jsd, jed, npz, itrac
@@ -4396,6 +4396,7 @@ contains
                call interpolate_vertical(isc, iec, jsc, jec, npz, 850.e2, Atm(n)%peln, wk(isc:iec,jsc:jec,:), a2)
                ! GR: extraction of custom field for SWISHE
                rh850 = a2
+               swfq = merge(1.0, 0.0, (rh850 .ge. 200.0))
                used=send_data(id_rh850, a2, Time)
            endif
            if (id_rh925>0) then

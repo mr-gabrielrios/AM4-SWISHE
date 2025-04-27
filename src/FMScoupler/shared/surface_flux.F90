@@ -180,10 +180,10 @@ logical :: do_simple             = .false.
 ! GR: addition of parameters relevant to SWISHE
 !     credit to Wenchang Yang (wenchang@princeton.edu) for initial implementation
 logical :: suppress_flux_q       = .false.
-logical :: suppress_flux_t        = .false.
-real    :: w_cddt                = 7.5 !WY: critical wind threshold in evap cap
-real    :: wcap_cddt             = 12.0 !WY: critical wind threshold in evap cap, windspeed capped if >w_cddt and <w0_cddt
-real    :: w0_cddt               = 14.5 !WY: critical wind threshold in evap cap, windspeed=0 if >=w0_cddt
+logical :: suppress_flux_t       = .false.
+real    :: w_cddt                = 10.0 !WY: critical wind threshold in evap cap
+real    :: wcap_cddt             = 13.0 !WY: critical wind threshold in evap cap, windspeed capped if >w_cddt and <w0_cddt
+real    :: w0_cddt               = 15.0 !WY: critical wind threshold in evap cap, windspeed=0 if >=w0_cddt
 real    :: wmin_ddt              = 0.0 !WY: minimum w_atm to be set if>w0_cddt
 real    :: sst_cddt              = 16.85 !WY: critical sst threshold in evap cap; 
                                          !GR: value set to 290 K to capture wide range of
@@ -422,10 +422,10 @@ subroutine surface_flux_1d (                                           &
   ! Define an evaporation suppression index to prevent a binary approach from
   ! not being applied to relevant TC-like vortices
 
-  rh500_weighted      = merge(0.5, 0.0, (rh500 .ge. 60))
-  rh700_weighted      = merge(1.0, 0.0, (rh700 .ge. 70))
-  rh850_weighted      = merge(1.0, 0.0, (rh850 .ge. 75))
-  vort850_weighted    = merge(0.5, 0.0, (abs(vort850) .ge. 1e-4))
+  rh500_weighted      = merge(0.75, 0.0, (rh500 .ge. 70))
+  rh700_weighted      = merge(0.75, 0.0, (rh700 .ge. 75))
+  rh850_weighted      = merge(0.75, 0.0, (rh850 .ge. 80))
+  vort850_weighted    = merge(1.0, 0.0, (abs(vort850) .ge. 1.5e-4))
   do i = 1, size(rh500_weighted)
       es_thresh(i)    = rh500_weighted(i) + rh700_weighted(i) + rh850_weighted(i) + vort850_weighted(i)
   enddo
@@ -463,11 +463,18 @@ subroutine surface_flux_1d (                                           &
              !drag_q = cd_q * min(w_cddt, w_atm)
              !WY: apply w_atm_q to warm SSTs
              drag_q = cd_q * w_atm_q
-             swfq = 1.             
-         elsewhere(t_surf0 - 273.15 - sst_cddt < 0)
+             swfq = 1.
+         elsewhere
              drag_q = cd_q * w_atm !WY: cold sst grids use the default w_atm
+             !WY: taper sst: weighted average
+             !WY: sst_cddt-dsst_ddt<=t_surf0-273.15<=sst_cddt
+             !WY: alpha -> 1 when t_surf0-273.15 -> sst_cddt, warmer
+             !WY: alpha -> 0 when t_surf0-273.15 -> sst_cddt-dsst_ddt, cooler
+             ! alpha = (t_surf0 - 273.15 - sst_cddt + dsst_ddt)/dsst_ddt
+             ! drag_q = cd_q * (alpha*min(w_cddt, w_atm) + (1-alpha)*w_atm )
+             ! drag_q = cd_q * (alpha*w_atm_q + (1-alpha)*w_atm )
+             ! swfq = 1.
          endwhere
-     
      elsewhere
          drag_q = cd_q * w_atm !WY: model's default over non-seawater grids
      endwhere

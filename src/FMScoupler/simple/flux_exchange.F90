@@ -96,10 +96,11 @@ logical :: use_existing_grid_spec = .false.
 logical :: all_ocean = .true.
 logical :: all_land = .false. ! note: if both all_ocean = all_land = .true.
                               !       then all_ocean = .true. will be used
+logical :: perpetual_equinox = .true.
 
 namelist /flux_exchange_nml/ z_ref_heat, z_ref_mom,  &
                              use_existing_grid_spec, &
-                             all_ocean, all_land
+                             all_ocean, all_land, perpetual_equinox
 
 !-----------------------------------------------------------------------
 
@@ -786,8 +787,9 @@ subroutine flux_up_to_atmos (Time, Land, Ice, Boundary )
    atmos_ice_boundary%dhdt=0.0
    atmos_ice_boundary%dedt=0.0
    atmos_ice_boundary%drdt=0.0
-   atmos_ice_boundary%coszen=0.0
-
+   if (perpetual_equinox) then
+       atmos_ice_boundary%coszen=0.0
+   end if
 !-----------------------------------------------------------------------
 !------ allocate land-ice-atmos boundary
 

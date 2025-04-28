@@ -448,6 +448,7 @@ subroutine surface_flux_1d (                                           &
          !WY: first get the w_atm_q
          where(w_atm>w0_cddt)
              w_atm_q = wmin_ddt !WY: set to wmin_ddt if very strong wind speed (>w0_cddt)
+             swfq = 1
          elsewhere(w_atm>wcap_cddt)
              !WY: linearly decreases to 0 if w_atm between wcap_cddt and w0_cddt
              w_atm_q = w_cddt - (w_atm - wcap_cddt)*(w_cddt - wmin_ddt)/(w0_cddt - wcap_cddt)
@@ -457,23 +458,18 @@ subroutine surface_flux_1d (                                           &
              w_atm_q = w_atm !WY: w_atm if w_atm<w_cddt
          endwhere
 
+         ! Obtain SWISHE application frequency based on fraction of winds suppressed
+         swfq = 1 - w_atm_q/w_atm
+
          !WY: second, apply to warm SSTs
          where((t_surf0 - 273.15 - sst_cddt) .ge. 0)
              !WY: warm sst grids cap the evap wind speed
              !drag_q = cd_q * min(w_cddt, w_atm)
              !WY: apply w_atm_q to warm SSTs
              drag_q = cd_q * w_atm_q
-             swfq = 1.
          elsewhere
+             swfq = 0 ! set SWISHE application to 0 since it's not applied
              drag_q = cd_q * w_atm !WY: cold sst grids use the default w_atm
-             !WY: taper sst: weighted average
-             !WY: sst_cddt-dsst_ddt<=t_surf0-273.15<=sst_cddt
-             !WY: alpha -> 1 when t_surf0-273.15 -> sst_cddt, warmer
-             !WY: alpha -> 0 when t_surf0-273.15 -> sst_cddt-dsst_ddt, cooler
-             ! alpha = (t_surf0 - 273.15 - sst_cddt + dsst_ddt)/dsst_ddt
-             ! drag_q = cd_q * (alpha*min(w_cddt, w_atm) + (1-alpha)*w_atm )
-             ! drag_q = cd_q * (alpha*w_atm_q + (1-alpha)*w_atm )
-             ! swfq = 1.
          endwhere
      elsewhere
          drag_q = cd_q * w_atm !WY: model's default over non-seawater grids

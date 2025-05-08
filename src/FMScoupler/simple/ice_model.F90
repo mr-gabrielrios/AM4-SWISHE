@@ -40,15 +40,19 @@ public :: ice_data_type, atmos_ice_boundary_type,               &
 !----------------------------------------------------------------
 !--------- NAMELIST INTERFACE ---------
 !
-!  use_climo_ice           = use monthly climatological amip ice mask
-!  use_annual_ice          = use annual climatology amip ice mask
-!  temp_ice_freeze         = temperature at which sea ice melts
-!  heat_capacity_ocean     = heat capacity for ocean in simple mixed layer model
+!  use_climo_ice            = use monthly climatological amip ice mask
+!  use_annual_ice           = use annual climatology amip ice mask
+!  temp_ice_freeze          = temperature at which sea ice melts
+!  density_ocean            = density of seawater, in kg m^-3
+!  spec_heat_capacity_ocean = specific heat capacity of ocean, in J kg^-1 K^-1
+!  depth_ocean              = ocean depth, in m 
 !
 real    :: diff                     = 2.092
 real    :: thickness_min            = 0.10
 real    :: specified_ice_thickness  = 2.0
-real    :: heat_capacity_ocean      = 1.e07
+real    :: density_ocean            = 1000.0
+real    :: spec_heat_capacity_ocean = 4000.0
+real    :: depth_ocean              = 10.0
 real    :: temp_ice_freeze          = -1.66
 real    :: roughness_ice            = 1.e-4
 logical :: mixed_layer_ocean        = .false.
@@ -91,13 +95,13 @@ character(len=64) :: sst_method = 'specified'  ! specified, uniform, or mixed_la
                                                !   aqua_planet_85N = Control shifted by 85N
                                                !   aqua_planet_90N = Control shifted by 90N
 real              :: temp_ice = 270.      ! used when ice_method = 'uniform'
-real              :: temp_sst = 280.      ! used when sst_method = 'uniform'
+real              :: temp_sst = 300.      ! used when sst_method = 'uniform'
 real              :: sst_anom = 0.        ! sst perturbation used for sensitivity experiments
 character(len=64) :: interp_method  = "bilinear" ! conservative or bilinear
 logical :: do_netcdf_restart = .true.
 
 namelist /ice_model_nml/ diff, thickness_min, specified_ice_thickness,        &
-                         heat_capacity_ocean, temp_ice_freeze, roughness_ice, &
+                         depth_ocean, temp_ice_freeze, roughness_ice, &
                          ice_method, use_climo_ice, use_annual_ice, temp_ice, &
                          sst_method, use_climo_sst, use_annual_sst, temp_sst, &
                          interp_method, do_netcdf_restart, sst_anom
@@ -178,7 +182,7 @@ contains
  real, dimension(is:ie,js:je) :: ts_new, gamma, flux_i, t_dt_surf, &
                  flux_t_new, flux_q_new, flux_lw_new, flux_sw_new, &
                  flux_u_new, flux_v_new, lprec_new,   fprec_new,   &
-                 deriv
+                 deriv, heat_capacity_ocean
 
  logical, dimension(is:ie,js:je,2) :: mask_ice
  real,    dimension(is:ie,js:je,2) :: thickness_ice, t_surf_ice, albedo
@@ -250,6 +254,8 @@ endif
    if (trim(sst_method) == 'mixed_layer') then
 
        call get_time ( Ice%Time_step_slow, dt )
+
+       heat_capacity_ocean = depth_ocean * density_ocean * spec_heat_capacity_ocean
 
        where (Ice%mask .and. .not. Ice%ice_mask)
           flux_i = ( Atmos_boundary%lw_flux + Atmos_boundary%sw_flux -   &
@@ -348,7 +354,6 @@ endif
           call prognostic_sst ( Ice )
 
       endif
-
 
  end subroutine update_ice_model_slow
 

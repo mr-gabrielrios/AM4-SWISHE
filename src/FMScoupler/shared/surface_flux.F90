@@ -223,7 +223,7 @@ subroutine surface_flux_1d (                                           &
      p_surf,    t_surf,     t_ca,      q_surf,                         &
      u_surf,    v_surf,                                                &
      rough_mom, rough_heat, rough_moist, rough_scale, gust,            &
-     rh500,     rh700,      rh850,     vort850,   swfq,                &
+     rh500,     rh700,      rh850,     vort850,   swfq,    lat,        &
      flux_t, flux_q, flux_r, flux_u, flux_v,                           &
      cd_m,      cd_t,       cd_q,                                      &
      w_atm,     u_star,     b_star,     q_star,                        &
@@ -250,10 +250,11 @@ subroutine surface_flux_1d (                                           &
                                      rough_moist, & !< Moisture roughness length
                                      rough_scale, & !< Scale factor used to topographic roughness calculation
                                      gust, & !< Gustiness factor
-                                     rh500, & ! 500 hPa relative humidity
-                                     rh700, & ! 700 hPa relative humidity
-                                     rh850, & ! 850-hPa relative humidity
-                                     vort850 ! 850-hPa relative vorticity
+                                     rh500, &   ! 500 hPa relative humidity
+                                     rh700, &   ! 700 hPa relative humidity
+                                     rh850, &   ! 850-hPa relative humidity
+                                     vort850, & ! 850-hPa relative vorticity,
+                                     lat        ! latitude
   real, intent(out), dimension(:) :: flux_t, & !< Sensible heat flux
                                      flux_q, & !< Evaporative water flux
                                      flux_r, & !< Radiative energy flux
@@ -432,6 +433,8 @@ subroutine surface_flux_1d (                                           &
 
   swfq = 0.
 
+  write(*, *) 'Latitude: ', lat
+
   ! End definition of SWISHE threshold, `es_thresh`
   ! --------------------------------------------------------------------------
 
@@ -444,7 +447,7 @@ subroutine surface_flux_1d (                                           &
      drag_m = cd_m * w_atm
      
      ! Apply suppression where the threshold is exceeded
-     where (es_thresh .ge. 2.5)
+     where ((es_thresh .ge. 2.5) .and. (abs(lat) .le. (30 * (4 * atan (1.0) / 180))))
          !WY: first get the w_atm_q
          where(w_atm>w0_cddt)
              w_atm_q = wmin_ddt !WY: set to wmin_ddt if very strong wind speed (>w0_cddt)
@@ -474,7 +477,6 @@ subroutine surface_flux_1d (                                           &
      elsewhere
          drag_q = cd_q * w_atm !WY: model's default over non-seawater grids
      endwhere
-
      ! End SWISHE flux suppression conditional
 
      ! density
@@ -557,7 +559,7 @@ subroutine surface_flux_0d (                                                 &
      p_surf_0,    t_surf_0,     t_ca_0,      q_surf_0,                       &
      u_surf_0,    v_surf_0,                                                  &
      rough_mom_0, rough_heat_0, rough_moist_0, rough_scale_0, gust_0,        &
-     rh500_0,     rh700_0,      rh850_0,     vort850_0, swfq_0,              &
+     rh500_0,     rh700_0,      rh850_0,     vort850_0, swfq_0, lat_0,       &
      flux_t_0,    flux_q_0,     flux_r_0,    flux_u_0,  flux_v_0,            &
      cd_m_0,      cd_t_0,       cd_q_0,                                      &
      w_atm_0,     u_star_0,     b_star_0,     q_star_0,                      &
@@ -588,7 +590,8 @@ subroutine surface_flux_0d (                                                 &
                       rh500_0, &
                       rh700_0, &
                       rh850_0, &
-                      vort850_0
+                      vort850_0, &
+                      lat_0
   real, intent(out) :: flux_t_0, & !< Sensible heat flux
                        flux_q_0, & !< Evaporative water flux
                        flux_r_0, & !< Radiative energy flux
@@ -621,7 +624,7 @@ subroutine surface_flux_0d (                                                 &
        p_atm,     z_atm,      t_ca,                          &
        p_surf,    t_surf,     u_surf,    v_surf,             &
        rough_mom, rough_heat, rough_moist,  rough_scale, gust, &
-       rh500,     rh700,      rh850,     vort850
+       rh500,     rh700,      rh850,     vort850,    lat
   real, dimension(1) :: &
        flux_t,    flux_q,     flux_r,    flux_u,  flux_v,    &
        dhdt_surf, dedt_surf,  dedq_surf, drdt_surf,          &
@@ -653,6 +656,7 @@ subroutine surface_flux_0d (                                                 &
   rh700(1)       = rh700_0
   rh850(1)       = rh850_0
   vort850(1)     = vort850_0
+  lat(1)         = lat_0
   q_surf(1)      = q_surf_0
   land(1)        = land_0
   seawater(1)    = seawater_0
@@ -663,7 +667,7 @@ subroutine surface_flux_0d (                                                 &
        p_surf,    t_surf,     t_ca,      q_surf,                         &
        u_surf,    v_surf,                                                &
        rough_mom, rough_heat, rough_moist, rough_scale, gust,            &
-       rh500,     rh700,      rh850,     vort850,   swfq,                &
+       rh500,     rh700,      rh850,     vort850,   swfq,    lat,        &
        flux_t, flux_q, flux_r, flux_u, flux_v,                           &
        cd_m,      cd_t,       cd_q,                                      &
        w_atm,     u_star,     b_star,     q_star,                        &
@@ -701,7 +705,7 @@ subroutine surface_flux_2d (                                           &
      p_surf,    t_surf,     t_ca,      q_surf,                         &
      u_surf,    v_surf,                                                &
      rough_mom, rough_heat, rough_moist, rough_scale, gust,            &
-     rh500,     rh700,      rh850,     vort850,   swfq,                &
+     rh500,     rh700,      rh850,     vort850,   swfq,    lat,        &
      flux_t,    flux_q,     flux_r,    flux_u,    flux_v,              &
      cd_m,      cd_t,       cd_q,                                      &
      w_atm,     u_star,     b_star,     q_star,                        &
@@ -732,7 +736,8 @@ subroutine surface_flux_2d (                                           &
                                        rh500, & ! 500 hPa relative humidity
                                        rh700, & ! 700 hPa relative humidity
                                        rh850, & ! 850-hPa relative humidity
-                                       vort850 ! 850-hPa relative vorticity
+                                       vort850, & ! 850-hPa relative vorticity
+                                       lat
   real, intent(out), dimension(:,:) :: flux_t, & !< Sensible heat flux
                                        flux_q, & !< Evaporative water flux
                                        flux_r, & !< Radiative energy flux
@@ -766,7 +771,7 @@ subroutine surface_flux_2d (                                           &
           p_surf(:,j),    t_surf(:,j),     t_ca(:,j),      q_surf(:,j),                                   &
           u_surf(:,j),    v_surf(:,j),                                                                    &
           rough_mom(:,j), rough_heat(:,j), rough_moist(:,j), rough_scale(:,j), gust(:,j),                 &
-          rh500(:,j),     rh700(:,j),      rh850(:,j),     vort850(:,j),   swfq(:,j),                     &
+          rh500(:,j),     rh700(:,j),      rh850(:,j),     vort850(:,j),   swfq(:,j),     lat(:,j),       &
           flux_t(:,j),    flux_q(:,j),     flux_r(:,j),    flux_u(:,j),    flux_v(:,j),                   &
           cd_m(:,j),      cd_t(:,j),       cd_q(:,j),                                                     &
           w_atm(:,j),     u_star(:,j),     b_star(:,j),     q_star(:,j),                                  &

@@ -153,7 +153,7 @@ real, dimension(is:ie,js:je) :: u_surf, v_surf, rough_heat, rough_moist, &
                                 albedo_vis_dif, albedo_nir_dif,          &
                                 del_m, del_h, del_q, land_frac,          &
                                 ref, ref2, t_ref, qs_ref, qs_ref_cmip,   &
-                                rh500, rh700, rh850, vort850
+                                rh500, rh700, rh850, vort850, lat
 
 logical, dimension(is:ie,js:je) :: mask, seawater, avail
 real :: zrefm, zrefh
@@ -221,6 +221,7 @@ real :: zrefm, zrefh
    rh850   = Atm%rh850  
    vort850 = Atm%vort850
    swfq    = Atm%swfq
+   lat     = Atm%lat
 
 !---- ice quantities ----
 
@@ -265,7 +266,7 @@ real :: zrefm, zrefh
                       p_surf, t_surf, t_ca, q_surf, u_surf, v_surf,                      &
                       rough_mom, rough_heat, rough_moist, rough_scale,                   &
                       Atm%gust,                                                          &
-                      rh500,  rh700,  rh850,   vort850, swfq,                            &
+                      rh500,  rh700,  rh850,   vort850, swfq, lat,                       &
                       flux_t, flux_q, flux_lw, flux_u, flux_v,                           &
                       cd_m,   cd_t, cd_q, wind,                                          &
                       u_star, b_star, q_star,                                            &
@@ -1194,7 +1195,7 @@ subroutine surface_flux_2d (                                           &
      p_surf,    t_surf,     t_ca,      q_surf,                         &
      u_surf,    v_surf,                                                &
      rough_mom, rough_heat, rough_moist, rough_scale, gust,            &
-     rh500,     rh700,      rh850,     vort850,   swfq,                &
+     rh500,     rh700,      rh850,     vort850,   swfq,    lat,        &
      flux_t,    flux_q,     flux_r,    flux_u,    flux_v,              &
      cd_m,      cd_t,       cd_q,                                      &
      w_atm,     u_star,     b_star,     q_star,                        &
@@ -1210,7 +1211,7 @@ subroutine surface_flux_2d (                                           &
        p_atm,     z_atm,      t_ca,                          &
        p_surf,    t_surf,     u_surf,    v_surf,             &
        rough_mom, rough_heat, rough_moist, rough_scale, gust, &
-       rh500,     rh700,      rh850,     vort850
+       rh500,     rh700,      rh850,     vort850,     lat
   real, intent(out), dimension(:,:) :: &
        flux_t,    flux_q,     flux_r,    flux_u,  flux_v,    &
        dhdt_surf, dedt_surf,  dedq_surf, drdt_surf,          &
@@ -1229,7 +1230,7 @@ subroutine surface_flux_2d (                                           &
           p_surf(:,j),    t_surf(:,j),     t_ca(:,j),      q_surf(:,j),                             &
           u_surf(:,j),    v_surf(:,j),                                                              &
           rough_mom(:,j), rough_heat(:,j), rough_moist(:,j), rough_scale(:,j), gust(:,j),           &
-          rh500(:,j),     rh700(:,j),      rh850(:,j),     vort850(:,j),   swfq(:,j),               &
+          rh500(:,j),     rh700(:,j),      rh850(:,j),     vort850(:,j),   swfq(:,j),   lat(:,j),   &
           flux_t(:,j),    flux_q(:,j),     flux_r(:,j),    flux_u(:,j),    flux_v(:,j),             &
           cd_m(:,j),      cd_t(:,j),       cd_q(:,j),                                               &
           w_atm(:,j),     u_star(:,j),     b_star(:,j),     q_star(:,j),                            &

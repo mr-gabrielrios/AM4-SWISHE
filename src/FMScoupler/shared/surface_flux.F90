@@ -181,6 +181,7 @@ logical :: do_simple             = .false.
 !     credit to Wenchang Yang (wenchang@princeton.edu) for initial implementation
 logical :: suppress_flux_q       = .false.
 logical :: suppress_flux_t       = .false.
+real    :: latitude_bound        = 90.0 !GR: latitude below which SWISHE is applied
 real    :: w_cddt                = 10.0 !WY: critical wind threshold in evap cap
 real    :: wcap_cddt             = 13.0 !WY: critical wind threshold in evap cap, windspeed capped if >w_cddt and <w0_cddt
 real    :: w0_cddt               = 15.0 !WY: critical wind threshold in evap cap, windspeed=0 if >=w0_cddt
@@ -212,7 +213,8 @@ namelist /surface_flux_nml/ no_neg_q,                   &
                             w0_cddt,                    &
                             wmin_ddt,                   &
                             sst_cddt,                   &
-                            dsst_ddt
+                            dsst_ddt,                   &
+                            latitude_bound
 
 contains
 
@@ -433,8 +435,6 @@ subroutine surface_flux_1d (                                           &
 
   swfq = 0.
 
-  write(*, *) 'Latitude: ', lat
-
   ! End definition of SWISHE threshold, `es_thresh`
   ! --------------------------------------------------------------------------
 
@@ -447,7 +447,7 @@ subroutine surface_flux_1d (                                           &
      drag_m = cd_m * w_atm
      
      ! Apply suppression where the threshold is exceeded
-     where ((es_thresh .ge. 2.5) .and. (abs(lat) .le. (30 * (4 * atan (1.0) / 180))))
+     where ((es_thresh .ge. 2.5) .and. (abs(lat) .le. (latitude_bound * (4 * atan (1.0) / 180))))
          !WY: first get the w_atm_q
          where(w_atm>w0_cddt)
              w_atm_q = wmin_ddt !WY: set to wmin_ddt if very strong wind speed (>w0_cddt)

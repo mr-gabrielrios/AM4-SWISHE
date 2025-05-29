@@ -179,8 +179,8 @@ logical :: do_simple             = .false.
 
 ! GR: addition of parameters relevant to SWISHE
 !     credit to Wenchang Yang (wenchang@princeton.edu) for initial implementation
-logical :: suppress_flux_q       = .false.
-logical :: suppress_flux_t       = .false.
+logical :: suppress_flux_q       = .false. ! GR: enables suppression of evaporative flux (flux_q) under TC conditions
+logical :: suppress_flux_t       = .false. ! GR: enables suppression of sensible flux (flux_t) under TC conditions
 real    :: latitude_bound        = 90.0 !GR: latitude below which SWISHE is applied
 real    :: w_cddt                = 10.0 !WY: critical wind threshold in evap cap
 real    :: wcap_cddt             = 13.0 !WY: critical wind threshold in evap cap, windspeed capped if >w_cddt and <w0_cddt
@@ -293,8 +293,12 @@ subroutine surface_flux_1d (                                           &
        rho_drag, drag_t,   drag_m,    drag_q,    rho,      &
        q_atm,    q_surf0,  dw_atmdu,  dw_atmdv,  w_gust,   &
        zu,       zt,       zq
+                                       
+
+  !
 
   ! GR: addition of local variables relevant to flux suppression
+  logical, dimension(size(avail)) ::   avail_SWISHE !< .TRUE. when the SWISHE namelist option is enabled (`suppress_flux_q`), .FALSE. otherwise
   real, dimension(size(vort850(:))) :: rh500_weighted, rh700_weighted, &
                                        rh850_weighted, vort850_weighted, &
                                        es_thresh
@@ -433,7 +437,15 @@ subroutine surface_flux_1d (                                           &
       es_thresh(i)    = rh500_weighted(i) + rh700_weighted(i) + rh850_weighted(i) + vort850_weighted(i)
   enddo
 
+  ! Initialize SWISHE value
   swfq = 0.
+  ! Set `avail_SWISHE` to .TRUE. if `suppress_flux_q` or `suppress_flux_t` enabled. 
+  ! Else, make .FALSE.
+  if (suppress_flux_q .or. suppress_flux_t) then
+      avail_SWISHE = .true.
+  else
+      avail_SWISHE = .false.
+  end if
 
   ! End definition of SWISHE threshold, `es_thresh`
   ! --------------------------------------------------------------------------
@@ -447,7 +459,7 @@ subroutine surface_flux_1d (                                           &
      drag_m = cd_m * w_atm
      
      ! Apply suppression where the threshold is exceeded
-     where ((es_thresh .ge. 2.5) .and. (abs(lat) .le. (latitude_bound * (4 * atan (1.0) / 180))))
+     where (avail_SWISHE .and. (es_thresh .ge. 2.5) .and. (abs(lat) .le. (latitude_bound * (4 * atan (1.0) / 180))))
          !WY: first get the w_atm_q
          where(w_atm>w0_cddt)
              w_atm_q = wmin_ddt !WY: set to wmin_ddt if very strong wind speed (>w0_cddt)

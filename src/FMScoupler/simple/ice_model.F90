@@ -270,7 +270,9 @@ endif
      ! update sea surface temperature
      ! note: temperatures allowed below freezing for conservation
        where (Ice%mask .and. .not.Ice%ice_mask)
-         Ice%t_surf  = ts_new
+          ! GR: override allowing temperatures to go below freezing
+          ts_new = merge(ts_new, TFREEZE, ts_new .ge. TFREEZE)
+          Ice%t_surf  = ts_new
        endwhere
 
    endif
@@ -455,6 +457,7 @@ real :: lon0, lond, latd, amp, t_control, dellon, dom_wid, siggy, tempi
        trim(sst_method) /= 'aqua_planet_1'        .and. &
        trim(sst_method) /= 'aqua_planet_2'        .and. &
        trim(sst_method) /= 'aqua_planet_3'        .and. &
+       trim(sst_method) /= 'aqua_planet_3b'       .and. &
        trim(sst_method) /= 'aqua_planet_4'        .and. &
        trim(sst_method) /= 'aqua_planet_5'        .and. &
        trim(sst_method) /= 'aqua_planet_6'        .and. &
@@ -650,6 +653,15 @@ endif
         Ice%ice_mask = .false.
         where (Ice%mask)
             Ice%t_surf = 27.*(1.-sin(max(min(1.5*Ice%lat,pi*0.5),-pi*0.5))**4) + TFREEZE
+        endwhere
+    else if (sst_method == "aqua_planet_3b") then
+        ice_method = 'none'
+        Ice%ice_mask = .false.
+        where (Ice%mask)
+            Ice%t_surf = 27.*(1.-sin(max(min(1.125*Ice%lat,pi*0.5),-pi*0.5))**4) + TFREEZE
+            ! where (Ice%lat .ge. pi / (1.125 * 2))
+            !     Ice%t_surf = TFREEZE
+            ! endwhere
         endwhere
     else if (sst_method == "aqua_planet_4") then
         ice_method = 'none'
